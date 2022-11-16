@@ -1,5 +1,5 @@
-name: 'Build, update and push to GHCR as well as GCP's Container Registry'
-description: 'Generic action to install node dependencies, build, test, update version and push docker image to GCP's Container Registry using Workload Identity Federation for authentication'
+name: 'Build, update and push to GHCR as well as GCPs Container Registry'
+description: 'Generic action to install node dependencies, build, test, update version and push docker image to GCPs Container Registry using Workload Identity Federation for authentication'
 
 inputs:
   token:
