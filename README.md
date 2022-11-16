@@ -11,4 +11,8 @@ This composite action assumes the following:
 ## Prerequisites ##
 This action uses the suggested [Wokload Identity Federation](https://cloud.google.com/iam/docs/configuring-workload-identity-federation#github-actions) 
 to facilitate authentication with GCP, and uses the official [auth](https://github.com/google-github-actions/auth) action to perform the authentication.  
-It's important to pay attention to the [prerequisites](https://github.com/google-github-actions/auth#prerequisites) mentioned in the auth action.
+It's important to pay attention to the [prerequisites](https://github.com/google-github-actions/auth#prerequisites) mentioned in the auth action. Most importantly, make sure to add the following to your `.gitignore` file:
+```
+# Ignore generated credentials from google-github-actions/auth
+gha-creds-*.json
+```
