@@ -9,6 +9,22 @@ inputs:
   checkout_branch:
     description: 'Branch to checkout'
     required: false
+  gcp_workload_identity_provider:
+    description: 'Workload Identity Provider identifier'
+    required: true
+  gcp_service_account:
+    description: 'GCP service account email'
+    required: true 
+  gcp_project_id:
+    description: 'GCP project ID'
+    required: true
+  gcp_artifacts_repo_name:
+    description: 'GCP artifcats repo. name'
+    required: true
+  gcp_artifacts_repo_location:
+    description: 'GCP Artifacts Repo. location'
+    required: true
+    default: 'me-west1'
   snyk_token:
     description: 'Snyk token'
     required: false
@@ -32,11 +48,11 @@ inputs:
   docker_login_registry:
     description: 'Docker login registry'
     required: true
-    default: ghcr.io
+    default: gcr.io
   docker_login_user:
     description: 'Docker login username'
     required: true
-    default: ${{ github.actor }}
+    default: 'oauth2accesstoken'
   ghcr_tag_owner:
     description: 'ghcr.io org. name (owner)'
     required: true
@@ -44,7 +60,7 @@ inputs:
   docker_image_name:
     description: 'Docker image name'
     required: true
-    default: ${{ github.event.repository.name }}     
+    default: ${{ github.event.repository.name }}    
 
 outputs:
   tagversion:
@@ -63,14 +79,107 @@ runs:
   using: "composite"  
   
   steps:
-    # actions/checkout MUST come before auth
-    - uses: 'actions/checkout@v3'
+    - name: 🤝 checkout
+      uses: actions/checkout@v3
+      with:
+        token: ${{ inputs.token }}
+        ref: ${{ inputs.checkout_branch }}
+  
+    - name: 🐶 Snyk vulnerabilies check
+      uses: snyk/actions/node@master
+      if: ${{ inputs.use_snyk == 'true' }}
+      env:
+        SNYK_TOKEN: ${{ inputs.snyk_token }}
+         
+    - name: ⬇️ node setup  
+      uses: actions/setup-node@v3
+      with:
+        node-version: 16
+        registry-url: ${{ inputs.npm_registry }}
+        scope: ${{ inputs.npm_registry_scope }}
+        token: ${{ inputs.token }}
+       
+    - name: 📦 install dependencies
+      run: |
+        npm install
+      shell: bash
+      env:
+        NODE_AUTH_TOKEN: ${{ inputs.token }}
 
-    - id: 'auth'
-      name: 'Authenticate to Google Cloud'
+    # This step attempts to add package-lock.json, in case it got changed
+    # due to the installed dependencies. If nothing changed, it won't commit it.
+    # Otherwise version bump push might end up with "working tree not clean" error.
+    - name: 🔄 update version and push to GitHub
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add package-lock.json
+        git diff-index --cached --quiet HEAD || git commit -m 'updating package-lock [skip ci]' 
+        npm version patch -m "GH Actions: Version updated to %s [skip ci]"
+        git push
+      shell: bash
+    
+    - name: ✍️ get-npm-version
+      id: package-version
+      uses: martinbeentjes/npm-get-version-action@master
+    
+    - name: 🔨 build application
+      run: npm run build
+      shell: bash
+      
+    - name: 🔍 run tests
+      if: ${{ inputs.perform_tests == 'true' }}
+      run: npm run test
+      shell: bash
+      
+    - name: 🚮 remove dev dependencies
+      run: npm prune --production
+      shell: bash
+      
+    - name: 🐳 set up Docker Buildx
+      id: buildx
+      uses: docker/setup-buildx-action@v2.2.1
+
+    - name: '🛫 Authenticate to Google Cloud'
+      id: 'auth'
       uses: 'google-github-actions/auth@v1'
       with:
-        workload_identity_provider: 'projects/123456789/locations/global/workloadIdentityPools/my-pool/providers/my-provider'
-        service_account: 'my-service-account@my-project.iam.gserviceaccount.com'
+        token_format: 'access_token'
+        workload_identity_provider: ${{ inputs.gcp_workload_identity_provider }}
+        service_account: ${{ inputs.gcp_service_account }}
 
-    # ... further steps are automatically authenticated
+    - name: 🔑 login to GCP Artifacts Registry
+      uses: docker/login-action@v2.1.0
+      with:
+        registry: ${{ inputs.docker_login_registry }}
+        username: ${{ inputs.docker_login_user }}
+        password: ${{ steps.auth.outputs.access_token }}
+
+    - name: 🔑 login to GitHub Container Registry
+      uses: docker/login-action@v2.1.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.token }}
+        
+    - name: ⛴ build and push docker image
+      uses: docker/build-push-action@v3.2.0
+      with:
+        build-args: BRNACH_NAME=${{ github.ref_name }}
+        context: .
+        push: true
+        tags: |
+           ${{ inputs.gcp_artifacts_repo_location }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/${{ inputs.gcp_artifacts_repo_name }}/${{ inputs.docker_image_name }}:${{ steps.package-version.outputs.current-version }}
+           ${{ inputs.gcp_artifacts_repo_location }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/${{ inputs.gcp_artifacts_repo_name }}/${{ inputs.docker_image_name }}:latest
+           ghcr.io/${{inputs.ghcr_tag_owner}}/${{inputs.docker_image_name}}:${{steps.package-version.outputs.current-version}}
+           ghcr.io/${{inputs.ghcr_tag_owner}}/${{inputs.docker_image_name}}:latest
+        
+    - name: 🚮 delete old images
+      uses: snok/container-retention-policy@v1.5.1
+      with:
+        image-names: ${{inputs.docker_image_name}}
+        cut-off: 1 week ago IDT
+        account-type: org
+        org-name: ${{inputs.ghcr_tag_owner}}
+        keep-at-least: 10
+        token: ${{ inputs.token }}
