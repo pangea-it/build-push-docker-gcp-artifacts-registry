@@ -155,12 +155,12 @@ runs:
         username: ${{ inputs.docker_login_user }}
         password: ${{ steps.auth.outputs.access_token }}
 
-#    - name: 🔑 login to GitHub Container Registry
-#      uses: docker/login-action@v2.1.0
-#      with:
-#        registry: ghcr.io
-#        username: ${{ github.actor }}
-#        password: ${{ inputs.token }}
+    - name: 🔑 login to GitHub Container Registry
+      uses: docker/login-action@v2.1.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.token }}
         
     - name: ⛴ build and push docker image
       uses: docker/build-push-action@v3.2.0
@@ -171,8 +171,8 @@ runs:
         tags: |
            ${{ inputs.gcp_artifacts_repo_location }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/${{ inputs.gcp_artifacts_repo_name }}/${{ inputs.docker_image_name }}:${{ steps.package-version.outputs.current-version }}
            ${{ inputs.gcp_artifacts_repo_location }}-docker.pkg.dev/${{ inputs.gcp_project_id }}/${{ inputs.gcp_artifacts_repo_name }}/${{ inputs.docker_image_name }}:latest
-#           ghcr.io/${{inputs.ghcr_tag_owner}}/${{inputs.docker_image_name}}:${{steps.package-version.outputs.current-version}}
-#           ghcr.io/${{inputs.ghcr_tag_owner}}/${{inputs.docker_image_name}}:latest
+           ghcr.io/${{inputs.ghcr_tag_owner}}/${{inputs.docker_image_name}}:${{steps.package-version.outputs.current-version}}
+           ghcr.io/${{inputs.ghcr_tag_owner}}/${{inputs.docker_image_name}}:latest
         
     - name: 🚮 delete old images
       uses: snok/container-retention-policy@v1.5.1
